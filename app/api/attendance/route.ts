@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import pool from "@/app/lib/db";
+import { supabase } from "../../lib/supabase";
 
 export async function POST(req: Request) {
-
   const { userId, action } = await req.json();
 
   const now = new Date();
@@ -23,13 +22,13 @@ export async function POST(req: Request) {
 
   try {
 
-    const existing = await pool.query(
-      `SELECT * FROM attendance
-       WHERE user_id=$1 AND date=CURRENT_DATE AND session=$2`,
-      [userId, session]
-    );
-
-    const record = existing.rows[0];
+    const { data: record } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("date", new Date().toISOString().split("T")[0])
+      .eq("session", session)
+      .single();
 
     if (action === "time_in") {
 
@@ -42,20 +41,19 @@ export async function POST(req: Request) {
 
       if (!record) {
 
-        await pool.query(
-          `INSERT INTO attendance (user_id,date,session,time_in)
-           VALUES ($1,CURRENT_DATE,$2,NOW())`,
-          [userId, session]
-        );
+        await supabase.from("attendance").insert({
+          user_id: userId,
+          date: new Date().toISOString().split("T")[0],
+          session,
+          time_in: new Date()
+        });
 
       } else {
 
-        await pool.query(
-          `UPDATE attendance
-           SET time_in = NOW()
-           WHERE id=$1`,
-          [record.id]
-        );
+        await supabase
+          .from("attendance")
+          .update({ time_in: new Date() })
+          .eq("id", record.id);
 
       }
 
@@ -80,12 +78,10 @@ export async function POST(req: Request) {
         );
       }
 
-      await pool.query(
-        `UPDATE attendance
-         SET time_out = NOW()
-         WHERE id=$1`,
-        [record.id]
-      );
+      await supabase
+        .from("attendance")
+        .update({ time_out: new Date() })
+        .eq("id", record.id);
 
       return NextResponse.json({
         message: `Time out recorded (${session})`
