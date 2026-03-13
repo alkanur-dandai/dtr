@@ -7,29 +7,42 @@ export async function POST(req: Request) {
   const now = new Date();
   const hour = now.getHours();
 
-  if (hour < 7 || hour >= 18) {
+  let session: "morning" | "afternoon";
+
+  // SESSION RULES
+  if (hour >= 7 && hour < 12) {
+    session = "morning";
+  } 
+  else if (hour >= 13 && hour < 18) {
+    session = "afternoon";
+  } 
+  else {
     return NextResponse.json(
-      { error: "Attendance allowed only between 7AM and 6PM" },
+      { error: "Attendance not allowed at this time" },
       { status: 400 }
     );
   }
 
-  let session: "morning" | "afternoon" = "morning";
-
-  if (hour >= 12) {
-    session = "afternoon";
-  }
+  const today = new Date().toISOString().split("T")[0];
 
   try {
 
-    const { data: record } = await supabase
+    // CHECK EXISTING RECORD
+    const { data: record, error: fetchError } = await supabase
       .from("attendance")
       .select("*")
       .eq("user_id", userId)
-      .eq("date", new Date().toISOString().split("T")[0])
+      .eq("date", today)
       .eq("session", session)
-      .single();
+      .maybeSingle();
 
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    // =========================
+    // TIME IN
+    // =========================
     if (action === "time_in") {
 
       if (record?.time_in) {
@@ -39,54 +52,76 @@ export async function POST(req: Request) {
         );
       }
 
+      // CREATE NEW RECORD
       if (!record) {
 
-        await supabase.from("attendance").insert({
-          user_id: userId,
-          date: new Date().toISOString().split("T")[0],
-          session,
-          time_in: new Date()
-        });
-
-      } else {
-
-        await supabase
+        const { error } = await supabase
           .from("attendance")
-          .update({ time_in: new Date() })
+          .insert({
+            user_id: userId,
+            date: today,
+            session: session,
+            time_in: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+
+      } 
+      else {
+
+        const { error } = await supabase
+          .from("attendance")
+          .update({
+            time_in: new Date().toISOString(),
+          })
           .eq("id", record.id);
+
+        if (error) throw error;
 
       }
 
       return NextResponse.json({
-        message: `Time in recorded (${session})`
+        message: `Time in recorded (${session})`,
       });
     }
 
+    // =========================
+    // TIME OUT
+    // =========================
     if (action === "time_out") {
 
       if (!record?.time_in) {
         return NextResponse.json(
-          { error: "Time in first" },
+          { error: "You must time in first" },
           { status: 400 }
         );
       }
 
       if (record.time_out) {
         return NextResponse.json(
-          { error: "Already timed out" },
+          { error: "Already timed out for this session" },
           { status: 400 }
         );
       }
 
-      await supabase
+      const { error } = await supabase
         .from("attendance")
-        .update({ time_out: new Date() })
+        .update({
+          time_out: new Date().toISOString(),
+        })
         .eq("id", record.id);
 
+      if (error) throw error;
+
       return NextResponse.json({
-        message: `Time out recorded (${session})`
+        message: `Time out recorded (${session})`,
       });
     }
+
+    return NextResponse.json(
+      { error: "Invalid action" },
+      { status: 400 }
+    );
 
   } catch (error) {
 
