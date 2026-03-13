@@ -6,29 +6,54 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const hour = now.getHours();
+  const today = new Date().toISOString().split("T")[0];
 
   let session: "morning" | "afternoon";
 
   // SESSION RULES
-  if (hour >= 7 && hour < 12) {
+  if (hour >= 6 && hour < 12) {
     session = "morning";
-  } 
-  else if (hour >= 13 && hour < 18) {
+  } else if (hour >= 12 && hour < 18) {
     session = "afternoon";
-  } 
-  else {
+  } else {
     return NextResponse.json(
-      { error: "Attendance not allowed at this time" },
+      { error: "Attendance allowed only from 6AM to 6PM" },
       { status: 400 }
     );
   }
 
-  const today = new Date().toISOString().split("T")[0];
-
   try {
 
-    // CHECK EXISTING RECORD
-    const { data: record, error: fetchError } = await supabase
+    // ===============================
+    // AUTO CLOSE MORNING AT 12PM
+    // ===============================
+    if (session === "afternoon") {
+
+      const { data: morningRecord } = await supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("date", today)
+        .eq("session", "morning")
+        .maybeSingle();
+
+      if (morningRecord && !morningRecord.time_out) {
+
+        const noon = new Date();
+        noon.setHours(12, 0, 0, 0);
+
+        await supabase
+          .from("attendance")
+          .update({ time_out: noon.toISOString() })
+          .eq("id", morningRecord.id);
+
+      }
+    }
+
+    // ===============================
+    // CHECK CURRENT SESSION RECORD
+    // ===============================
+    const { data: record } = await supabase
       .from("attendance")
       .select("*")
       .eq("user_id", userId)
@@ -36,13 +61,9 @@ export async function POST(req: Request) {
       .eq("session", session)
       .maybeSingle();
 
-    if (fetchError) {
-      throw fetchError;
-    }
-
-    // =========================
+    // ===============================
     // TIME IN
-    // =========================
+    // ===============================
     if (action === "time_in") {
 
       if (record?.time_in) {
@@ -52,42 +73,36 @@ export async function POST(req: Request) {
         );
       }
 
-      // CREATE NEW RECORD
       if (!record) {
 
-        const { error } = await supabase
+        await supabase
           .from("attendance")
           .insert({
             user_id: userId,
             date: today,
-            session: session,
-            time_in: new Date().toISOString(),
+            session,
+            time_in: now.toISOString()
           });
 
-        if (error) throw error;
+      } else {
 
-      } 
-      else {
-
-        const { error } = await supabase
+        await supabase
           .from("attendance")
           .update({
-            time_in: new Date().toISOString(),
+            time_in: now.toISOString()
           })
           .eq("id", record.id);
-
-        if (error) throw error;
 
       }
 
       return NextResponse.json({
-        message: `Time in recorded (${session})`,
+        message: `Time in recorded (${session})`
       });
     }
 
-    // =========================
+    // ===============================
     // TIME OUT
-    // =========================
+    // ===============================
     if (action === "time_out") {
 
       if (!record?.time_in) {
@@ -99,22 +114,20 @@ export async function POST(req: Request) {
 
       if (record.time_out) {
         return NextResponse.json(
-          { error: "Already timed out for this session" },
+          { error: "Already timed out" },
           { status: 400 }
         );
       }
 
-      const { error } = await supabase
+      await supabase
         .from("attendance")
         .update({
-          time_out: new Date().toISOString(),
+          time_out: now.toISOString()
         })
         .eq("id", record.id);
 
-      if (error) throw error;
-
       return NextResponse.json({
-        message: `Time out recorded (${session})`,
+        message: `Time out recorded (${session})`
       });
     }
 
@@ -131,6 +144,5 @@ export async function POST(req: Request) {
       { error: "Database error" },
       { status: 500 }
     );
-
   }
 }
