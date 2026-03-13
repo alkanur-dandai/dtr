@@ -1,18 +1,15 @@
-
+import { supabase } from "@/app/lib/supabase";
 import { NextResponse } from "next/server";
-import pool from "../../lib/db";
+import { supabaseAdmin } from "@/app/lib/supabase/server";
 
 export async function GET() {
-  try {
-    const result = await pool.query("SELECT * FROM users");
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("*");
 
-    return NextResponse.json(result.rows);
-  } catch (error) {
-    console.error(error);
-
-    return NextResponse.json(
-      { error: "Database error" },
-      { status: 500 }
-    );
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  return NextResponse.json(data);
 }
