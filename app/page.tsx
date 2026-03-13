@@ -57,24 +57,31 @@ export default function Home() {
     }
   }
 
-  async function handleAction(
-    userId: number,
-    action: "time_in" | "time_out"
-  ) {
-    try {
-      const result = await handleAttendanceAction(userId, action);
+function isAttendanceAllowed() {
+  const now = new Date();
+  const hour = now.getHours();
+  return hour >= 6 && hour < 18;
+}
 
-      alert(result.message);
-
-      // refresh users after action
-      refreshUsers();
-    } catch (error) {
-      if (error instanceof Error) {
-        alert(error.message);
-      }
-    }
+ async function handleAction(
+  userId: number,
+  action: "time_in" | "time_out"
+) {
+  if (!isAttendanceAllowed()) {
+    alert("Attendance is only allowed from 6:00 AM to 5:59 PM.");
+    return;
   }
 
+  try {
+    const result = await handleAttendanceAction(userId, action);
+    alert(result.message);
+    refreshUsers();
+  } catch (error) {
+    if (error instanceof Error) {
+      alert(error.message);
+    }
+  }
+}
   /* LOADING SCREEN */
   if (loading) {
     return (
