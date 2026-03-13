@@ -6,53 +6,75 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const hour = now.getHours();
+  const minute = now.getMinutes();
+  const timeDecimal = hour + minute / 60; // convert to decimal for comparison
   const today = new Date().toISOString().split("T")[0];
 
   let session: "morning" | "afternoon";
 
+  // ==========================
   // SESSION RULES
-  if (hour >= 6 && hour < 12) {
+  // ==========================
+  if (timeDecimal >= 6 && timeDecimal < 12) {
     session = "morning";
-  } else if (hour >= 12 && hour < 18) {
+  } else if (timeDecimal >= 12 && timeDecimal < 18) {
     session = "afternoon";
   } else {
     return NextResponse.json(
-      { error: "Attendance allowed only from 6AM to 6PM" },
+      { error: "Attendance allowed only from 6:00 AM to 5:59 PM" },
       { status: 400 }
     );
   }
 
   try {
+    // ==========================
+    // AUTO CLOSE MORNING AT 12 PM
+    // ==========================
+    const { data: morningRecord } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("date", today)
+      .eq("session", "morning")
+      .maybeSingle();
 
-    // ===============================
-    // AUTO CLOSE MORNING AT 12PM
-    // ===============================
-    if (session === "afternoon") {
+    if (morningRecord && !morningRecord.time_out) {
+      const noon = new Date();
+      noon.setHours(12, 0, 0, 0);
 
-      const { data: morningRecord } = await supabase
+      await supabase
         .from("attendance")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("date", today)
-        .eq("session", "morning")
-        .maybeSingle();
+        .update({ time_out: noon.toISOString() })
+        .eq("id", morningRecord.id);
+    }
 
-      if (morningRecord && !morningRecord.time_out) {
+    // ==========================
+    // AUTO CLOSE AFTERNOON AT 5 PM
+    // ==========================
+    const { data: afternoonRecord } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("date", today)
+      .eq("session", "afternoon")
+      .maybeSingle();
 
-        const noon = new Date();
-        noon.setHours(12, 0, 0, 0);
+    if (afternoonRecord && !afternoonRecord.time_out) {
+      const autoAfternoonTime = new Date();
+      autoAfternoonTime.setHours(17, 0, 0, 0); // 5:00 PM
 
+      // Only auto close if current time is past 5:00 PM
+      if (now >= autoAfternoonTime) {
         await supabase
           .from("attendance")
-          .update({ time_out: noon.toISOString() })
-          .eq("id", morningRecord.id);
-
+          .update({ time_out: autoAfternoonTime.toISOString() })
+          .eq("id", afternoonRecord.id);
       }
     }
 
-    // ===============================
-    // CHECK CURRENT SESSION RECORD
-    // ===============================
+    // ==========================
+    // GET CURRENT SESSION RECORD
+    // ==========================
     const { data: record } = await supabase
       .from("attendance")
       .select("*")
@@ -61,11 +83,10 @@ export async function POST(req: Request) {
       .eq("session", session)
       .maybeSingle();
 
-    // ===============================
+    // ==========================
     // TIME IN
-    // ===============================
+    // ==========================
     if (action === "time_in") {
-
       if (record?.time_in) {
         return NextResponse.json(
           { error: "Already timed in for this session" },
@@ -74,37 +95,28 @@ export async function POST(req: Request) {
       }
 
       if (!record) {
-
-        await supabase
-          .from("attendance")
-          .insert({
-            user_id: userId,
-            date: today,
-            session,
-            time_in: now.toISOString()
-          });
-
+        await supabase.from("attendance").insert({
+          user_id: userId,
+          date: today,
+          session,
+          time_in: now.toISOString(),
+        });
       } else {
-
         await supabase
           .from("attendance")
-          .update({
-            time_in: now.toISOString()
-          })
+          .update({ time_in: now.toISOString() })
           .eq("id", record.id);
-
       }
 
       return NextResponse.json({
-        message: `Time in recorded (${session})`
+        message: `Time in recorded (${session})`,
       });
     }
 
-    // ===============================
+    // ==========================
     // TIME OUT
-    // ===============================
+    // ==========================
     if (action === "time_out") {
-
       if (!record?.time_in) {
         return NextResponse.json(
           { error: "You must time in first" },
@@ -121,13 +133,11 @@ export async function POST(req: Request) {
 
       await supabase
         .from("attendance")
-        .update({
-          time_out: now.toISOString()
-        })
+        .update({ time_out: now.toISOString() })
         .eq("id", record.id);
 
       return NextResponse.json({
-        message: `Time out recorded (${session})`
+        message: `Time out recorded (${session})`,
       });
     }
 
@@ -135,11 +145,8 @@ export async function POST(req: Request) {
       { error: "Invalid action" },
       { status: 400 }
     );
-
   } catch (error) {
-
     console.error(error);
-
     return NextResponse.json(
       { error: "Database error" },
       { status: 500 }
