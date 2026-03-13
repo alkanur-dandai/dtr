@@ -1,0 +1,43 @@
+
+
+
+
+CREATE TABLE attendance (
+	id SERIAL PRIMARY KEY,
+	user_id INT REFERENCES users(id),
+	date DATE NOT NULL,
+	time_in TIMESTAMP,
+	time_out TIMESTAMP,
+	created_at TIMESTAMP DEFAULT NOW(),
+	UNIQUE(user_id, date)
+);
+
+CREATE TABLE users (
+	id SERIAL PRIMARY KEY,
+	name VARCHAR(100) NOT NULL,
+	student_no VARCHAR(100) UNIQUE NOT NULL,
+	created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+
+here the final logic, first case if user click time in,  the time in button will not work user should click time out. case 2 if user click time in then did not click the time out it will only limited to 12 meaning if reach 12pm will time out by system automatic the user, user should click time time in again to record for afternoon, then it only until 5pm 
+
+
+
+
+DROP TABLE IF EXISTS attendance;
+
+CREATE TYPE session_type AS ENUM ('morning', 'afternoon');
+
+CREATE TABLE attendance (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id),
+  date DATE NOT NULL,
+  session session_type NOT NULL,
+  time_in TIMESTAMP,
+  time_out TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  UNIQUE(user_id, date, session)
+);
