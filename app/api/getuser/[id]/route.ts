@@ -1,44 +1,38 @@
-// import { NextResponse } from "next/server";
-// import db from "@/app/lib/db";
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/app/lib/supabase/server";
 
-// export async function GET(
-//   req: Request,
-//   { params }: { params: { id: string } }
-// ) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const userId = Number(params.id);
 
-//   const userId = params.id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Invalid or missing user ID" },
+      { status: 400 }
+    );
+  }
 
-//   const userResult = await db.query(
-//     `SELECT id, name, student_no FROM users WHERE id = $1`,
-//     [userId]
-//   );
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("id, name, student_no")
+    .eq("id", userId)
+    .maybeSingle();
 
-//   if (userResult.rows.length === 0) {
-//     return NextResponse.json(
-//       { error: "User not found" },
-//       { status: 404 }
-//     );
-//   }
+  if (error) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
 
-//   const logsResult = await db.query(
-//     `
-//     SELECT
-//       date,
-//       MAX(time_in) FILTER (WHERE session='morning') AS morning_in,
-//       MAX(time_out) FILTER (WHERE session='morning') AS morning_out,
-//       MAX(time_in) FILTER (WHERE session='afternoon') AS afternoon_in,
-//       MAX(time_out) FILTER (WHERE session='afternoon') AS afternoon_out
-//     FROM attendance
-//     WHERE user_id = $1
-//     GROUP BY date
-//     ORDER BY date DESC
-//     `,
-//     [userId]
-//   );
+  if (!data) {
+    return NextResponse.json(
+      { error: "User not found" },
+      { status: 404 }
+    );
+  }
 
-//   return NextResponse.json({
-//     user: userResult.rows[0],
-//     logs: logsResult.rows
-//   });
-
-// }
+  return NextResponse.json(data);
+}
