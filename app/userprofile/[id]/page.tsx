@@ -1,5 +1,5 @@
-import { supabase } from "@/app/lib/supabase";
-import { supabaseAdmin } from "@/app/lib/supabase/server";
+import { supabase } from "../../lib/supabase";
+import { supabaseAdmin } from "../../lib/supabase/server";
 
 interface Log {
   date: string;
